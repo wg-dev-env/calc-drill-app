@@ -243,8 +243,12 @@
   .hyaku-cell.op-cell, .hyaku-cell.head-cell { background: #f2f2f2; }
 
   .sheet-answers { display: grid; gap: 6px 18px; margin-top: 12px; }
+  .sheet-answers.cols-1 { grid-template-columns: 1fr; }
   .sheet-answers.cols-2 { grid-template-columns: 1fr 1fr; }
   .answer-item { font-size: 11px; display: flex; align-items: baseline; gap: 6px; }
+  .answer-item.answer-block { flex-direction: column; gap: 2px; break-inside: avoid; }
+  .answer-line { display: flex; align-items: baseline; gap: 6px; }
+  .answer-hint { font-size: 9.5px; color: #555; margin-left: 22px; line-height: 1.6; }
 
   .fraction { display: inline-flex; flex-direction: column; align-items: center; vertical-align: middle; line-height: 1; margin: 0 2px; }
   .fraction .bar { width: 100%; height: 2px; background: currentColor; margin: 1px 0; }
@@ -379,6 +383,10 @@
               <span style="flex:1;"><span class="check-text">がんばったねスタンプ欄</span><br><span class="toggle-desc">できたら色をぬる、ごほうび欄</span></span>
               <span class="switch" id="stamp-switch"><span class="switch-knob"></span></span>
             </div>
+            <div class="check-row" id="explain-row" onclick="toggleExplain()">
+              <span style="flex:1;"><span class="check-text">こたえに解説をつける</span><br><span class="toggle-desc">楽に解くコツ・途中式を、こたえの下にのせる</span></span>
+              <span class="switch" id="explain-switch"><span class="switch-knob"></span></span>
+            </div>
           </div>
         </div>
         <div>
@@ -501,22 +509,57 @@ const LEVEL_RANGES = {
   frac:  { 1: [2, 4], 2: [2, 9], 3: [2, 12] },
 };
 
+// ==================== 整数の「くふう」ヒント（きりのよい数・×25 など） ====================
+// 近くのきりのよい数（10・100・1000）を使った補正法。使えないときは null
+function addTrickHint(a, b) {
+  for (const u of [1000, 100, 10]) {
+    for (const [x, y] of [[a, b], [b, a]]) {
+      if (x < u) continue;
+      const up = Math.ceil(x / u) * u, d = up - x;
+      if (d >= 1 && d <= 3) return `${x} を ${up} とみて：${up} ＋ ${y} ＝ ${up + y}<br>ふえた ${d} をひいて ${up + y - d}`;
+    }
+  }
+  return null;
+}
+function subTrickHint(a, b) {
+  for (const u of [1000, 100, 10]) {
+    if (b < u) continue;
+    const up = Math.ceil(b / u) * u, d = up - b;
+    if (d >= 1 && d <= 3) return `ひく数 ${b} を ${up} とみて：${a} － ${up} ＝ ${a - up}<br>ひきすぎた ${d} をたして ${a - up + d}`;
+  }
+  return null;
+}
+function mulTrickHint(a, b) {
+  const SP = { 5: [10, 2], 25: [100, 4], 50: [100, 2], 125: [1000, 8], 250: [1000, 4] };
+  for (const [f, o] of [[a, b], [b, a]]) {
+    if (SP[f]) { const [m, dv] = SP[f]; return `×${f} は ×${m}÷${dv}：${o} × ${m} ＝ ${o * m}<br>${o * m} ÷ ${dv} ＝ ${o * m / dv}`; }
+  }
+  for (const [f, o] of [[a, b], [b, a]]) {
+    for (const u of [100, 10]) {
+      if (f < u) continue;
+      const up = Math.ceil(f / u) * u, d = up - f;
+      if (d >= 1 && d <= 2) return `${f} を ${up} とみて：${o} × ${up} ＝ ${o * up}<br>よけいな ${o} × ${d} ＝ ${o * d} をひいて ${o * up - o * d}`;
+    }
+  }
+  return null;
+}
+
 // ==================== 問題生成（単元別） ====================
 function makeAdd(grade, level) {
   const [min, max] = LEVEL_RANGES.add[grade][level];
   const a = rand(min, max), b = rand(min, max);
-  return { expr: `${a} ＋ ${b}`, answer: String(a + b) };
+  return { expr: `${a} ＋ ${b}`, answer: String(a + b), hint: addTrickHint(a, b) };
 }
 function makeSub(grade, level) {
   const [min, max] = LEVEL_RANGES.sub[grade][level];
   const a = rand(min, max);
   const b = rand(min, Math.max(min, a - 1));
-  return { expr: `${a} － ${b}`, answer: String(a - b) };
+  return { expr: `${a} － ${b}`, answer: String(a - b), hint: subTrickHint(a, b) };
 }
 function makeMul(grade, level) {
   const [aMin, aMax, bMin, bMax] = LEVEL_RANGES.mul[grade][level];
   const a = rand(aMin, aMax), b = rand(bMin, bMax);
-  return { expr: `${a} × ${b}`, answer: String(a * b) };
+  return { expr: `${a} × ${b}`, answer: String(a * b), hint: mulTrickHint(a, b) };
 }
 function divParams(grade, level) {
   const [bMin, bMax, qMin, qMax] = LEVEL_RANGES.div[grade][level];
@@ -525,13 +568,13 @@ function divParams(grade, level) {
 function makeDivNoRem(grade, level) {
   const { b, q } = divParams(grade, level);
   const a = b * q;
-  return { expr: `${a} ÷ ${b}`, answer: String(q) };
+  return { expr: `${a} ÷ ${b}`, answer: String(q), hint: `たしかめ：${b} × ${q} ＝ ${a}` };
 }
 function makeDivRem(grade, level) {
   const { b, q } = divParams(grade, level);
   const r = rand(1, Math.max(1, b - 1));
   const a = b * q + r;
-  return { expr: `${a} ÷ ${b}`, answer: `${q} あまり ${r}` };
+  return { expr: `${a} ÷ ${b}`, answer: `${q} あまり ${r}`, hint: `たしかめ：${b} × ${q} ＋ ${r} ＝ ${a}（あまりはわる数より小さい）` };
 }
 function makeRound(grade, level) {
   const [min, max] = LEVEL_RANGES.round[level];
@@ -540,7 +583,10 @@ function makeRound(grade, level) {
   const placeLabel = useHundred ? '百の位' : '十の位';
   const unit = useHundred ? 100 : 10;
   const rounded = Math.round(n / unit) * unit;
-  return { expr: `${n} を四捨五入して、${placeLabel}までのがい数にすると`, answer: String(rounded) };
+  const digit = Math.floor(n / (unit / 10)) % 10; // 四捨五入する、1つ下の位の数字
+  const belowLabel = useHundred ? '十の位' : '一の位';
+  const hint = `${belowLabel}の ${digit} を見る：${digit >= 5 ? '5以上なので くり上げる' : '5より小さいので きりすてる'} → ${rounded}`;
+  return { expr: `${n} を四捨五入して、${placeLabel}までのがい数にすると`, answer: String(rounded), hint };
 }
 function makeDec(grade, level) {
   const [min, max] = LEVEL_RANGES.dec[level];
@@ -550,7 +596,8 @@ function makeDec(grade, level) {
   let x = p, y = q, op = '＋';
   if (!isAdd) { op = '－'; x = Math.max(p, q); y = Math.min(p, q); }
   const res = isAdd ? Math.round((x + y) * 10) / 10 : Math.round((x - y) * 10) / 10;
-  return { expr: `${x.toFixed(1)} ${op} ${y.toFixed(1)}`, answer: String(res) };
+  return { expr: `${x.toFixed(1)} ${op} ${y.toFixed(1)}`, answer: String(res),
+    hint: '小数点をたてにそろえてひっ算。答えの小数点は上からまっすぐおろす' };
 }
 function makeFrac(grade, level) {
   const [dMin, dMax] = LEVEL_RANGES.frac[level];
@@ -558,11 +605,17 @@ function makeFrac(grade, level) {
   if (grade === 3) {
     const n1 = rand(1, d - 1);
     const n2 = rand(1, d - n1);
-    return { expr: `${fracHtml(n1, d)} ＋ ${fracHtml(n2, d)}`, answer: fracSimplify(n1 + n2, d) };
+    const sum = n1 + n2, ans = fracSimplify(n1 + n2, d);
+    let hint = `分母の ${d} はそのまま、分子だけ たす：${n1} ＋ ${n2} ＝ ${sum}`;
+    if (gcd(sum, d) > 1 || sum >= d) hint += ` → ${fracHtml(sum, d)} ＝ ${ans}（約分・帯分数に）`;
+    return { expr: `${fracHtml(n1, d)} ＋ ${fracHtml(n2, d)}`, answer: ans, hint };
   }
   const n1 = rand(2, d);
   const n2 = rand(1, n1 - 1);
-  return { expr: `${fracHtml(n1, d)} － ${fracHtml(n2, d)}`, answer: fracSimplify(n1 - n2, d) };
+  const diff = n1 - n2, ans = fracSimplify(n1 - n2, d);
+  let hint = `分母の ${d} はそのまま、分子だけ ひく：${n1} － ${n2} ＝ ${diff}`;
+  if (diff > 0 && gcd(diff, d) > 1) hint += ` → ${fracHtml(diff, d)} ＝ ${ans}（約分）`;
+  return { expr: `${fracHtml(n1, d)} － ${fracHtml(n2, d)}`, answer: ans, hint };
 }
 // ==================== 開智対策の問題生成 ====================
 // 小数は浮動小数点の誤差を避けるため、{ n: 整数, s: 小数点以下のけた数 } で計算する
@@ -594,13 +647,16 @@ function makeKDecAddSub(grade, level, forced) {
       : level === 2 ? pick(['add21', 'sub21', 'subI1']) : pick(['add21', 'sub21', 'subI2', 'add22']));
     const spec = SPEC[t.slice(3)];
     let a = rDec(...spec[0]), b = rDec(...spec[1]);
+    const hint = (a.s === 0 || b.s === 0)
+      ? '整数は 小数点以下を 0 とみて、位（小数点）をたてにそろえる'
+      : '小数点をたてにそろえてから計算し、答えの小数点は上からおろす';
     if (t.startsWith('add')) {
       if (Math.random() < 0.5) [a, b] = [b, a];
-      return { expr: `${dStr(a)} ＋ ${dStr(b)}`, answer: dStr(dAdd(a, b)) };
+      return { expr: `${dStr(a)} ＋ ${dStr(b)}`, answer: dStr(dAdd(a, b)), hint };
     }
     const r = dSub(a, b);
     if (r.n <= 0) return null;
-    return { expr: `${dStr(a)} － ${dStr(b)}`, answer: dStr(r) };
+    return { expr: `${dStr(a)} － ${dStr(b)}`, answer: dStr(r), hint };
   });
 }
 // 小数×小数（例: 8.5×0.28）
@@ -609,7 +665,9 @@ function makeKDecMul(grade, level) {
   if (level === 1) { a = rDec(11, 99, 1); b = dec(rand(2, 9), 0); }
   else if (level === 2) { a = rDec(11, 99, 1); b = rDec(11, 99, 1); }
   else { a = rDec(11, 199, 1); b = rDec(11, 99, 2); }
-  return { expr: `${dStr(a)} × ${dStr(b)}`, answer: dStr(dMul(a, b)) };
+  const places = a.s + b.s;
+  const hint = `小数点をとって ${a.n} × ${b.n} ＝ ${a.n * b.n}<br>小数点以下は ${a.s} ＋ ${b.s} ＝ ${places} けた → ${dStr(dMul(a, b))}`;
+  return { expr: `${dStr(a)} × ${dStr(b)}`, answer: dStr(dMul(a, b)), hint };
 }
 // 小数÷小数 商とあまり（例: 7.92÷2.7 商を小数第1位まで）
 function makeKDecDivRem(grade, level) {
@@ -621,8 +679,11 @@ function makeKDecDivRem(grade, level) {
     const q = Math.floor(A * p / dH);
     const rem = A - q * dH / p;
     if (q < p || rem <= 0) return null; // 商は1以上
+    const hint = dLabel.includes('.')
+      ? `わる数が小数のときは、わる数とわられる数を同じだけ10倍して、わる数を整数になおしてから計算<br>あまりの小数点は、もとのわられる数の位置にそろえる`
+      : `あまりの小数点は、わられる数の小数点の位置にそろえる`;
     return { expr: `${decStr(A, 2)} ÷ ${dLabel}`, answer: `${qd === 1 ? `${Math.floor(q / 10)}.${q % 10}` : q} あまり ${decStr(rem, 2)}`,
-      note: qd === 1 ? '商を小数第1位まで求め、あまりも出す' : '商を一の位まで求め、あまりも出す' };
+      note: qd === 1 ? '商を小数第1位まで求め、あまりも出す' : '商を一の位まで求め、あまりも出す', hint };
   });
 }
 // わり算の商をがい数で（例: 6÷7 上から2けた）
@@ -631,7 +692,8 @@ function makeKDivRound(grade, level, smallerDividend) {
     if (level === 1) {
       const a = rand(20, 999), b = rand(3, 9);
       if (a % b === 0) return null;
-      return { expr: `${a} ÷ ${b}`, answer: String(Math.floor((2 * a + b) / (2 * b))), note: '商は四捨五入して、一の位までのがい数で表す' };
+      return { expr: `${a} ÷ ${b}`, answer: String(Math.floor((2 * a + b) / (2 * b))), note: '商は四捨五入して、一の位までのがい数で表す',
+        hint: '求める位（一の位）の1つ下（小数第1位）まで計算して、そこを四捨五入する' };
     }
     const a = level === 2 ? rand(1, 99) : rand(1, 99);
     const b = level === 2 ? rand(3, 9) : rand(11, 99);
@@ -641,7 +703,8 @@ function makeKDivRound(grade, level, smallerDividend) {
     if ((a * Math.pow(10, k + 1)) % b === 0) return null;
     const n = a * Math.pow(10, k);
     const r = Math.floor((2 * n + b) / (2 * b));
-    return { expr: `${a} ÷ ${b}`, answer: decStr(r, k), note: '商は上から2けたのがい数で表す' };
+    return { expr: `${a} ÷ ${b}`, answer: decStr(r, k), note: '商は上から2けたのがい数で表す',
+      hint: '上から3けための数字まで計算して、その位を四捨五入する' };
   });
 }
 // 小数÷整数 わり切れるまで（例: 84.6÷36）
@@ -652,7 +715,8 @@ function makeKDecDivInt(grade, level) {
     const qH = randRaw(101, level === 1 ? 999 : 499, 2);
     const AH = qH * d;
     if (AH % 10 !== 0 || (AH / 10) % 10 === 0 || AH >= 10000) return null; // わられる数は100未満の小数
-    return { expr: `${decStr(AH, 2)} ÷ ${d}`, answer: decStr(qH, 2), note: 'わり切れるまで計算する' };
+    return { expr: `${decStr(AH, 2)} ÷ ${d}`, answer: decStr(qH, 2), note: 'わり切れるまで計算する',
+      hint: `商の小数点は わられる数の小数点の位置にそろえる。わり切れるまで 0 をおろして続ける<br>たしかめ：${decStr(qH, 2)} × ${d} ＝ ${decStr(AH, 2)}` };
   });
 }
 // 計算の順序（例: 12－2×3.4、2.6－(7.1－3.5)×0.25）
@@ -661,25 +725,32 @@ function makeKOrder(grade, level, forced) {
     const t = forced || (level === 1 ? pick(['a-bc', 'a+bc'])
       : level === 2 ? pick(['(a-b)c', 'ab-c', 'a(b+c)']) : pick(['a-(b-c)d', '(a+b)c-d']));
     const qt = pick([dec(25, 2), dec(5, 1), dec(75, 2), dec(125, 2), dec(15, 1)]);
-    let a, b, c, d, r, expr;
+    let a, b, c, d, r, expr, hint, i1, i2;
     switch (t) {
       case 'a-bc': a = dec(rand(8, 20), 0); b = dec(rand(2, 5), 0); c = rDec(11, 39, 1);
-        r = dSub(a, dMul(b, c)); expr = `${dStr(a)} － ${dStr(b)} × ${dStr(c)}`; break;
+        i1 = dMul(b, c); r = dSub(a, i1); expr = `${dStr(a)} － ${dStr(b)} × ${dStr(c)}`;
+        hint = `先に × を計算：${dStr(b)} × ${dStr(c)} ＝ ${dStr(i1)}<br>${dStr(a)} － ${dStr(i1)} ＝ ${dStr(r)}`; break;
       case 'a+bc': a = rDec(11, 99, 1); b = dec(rand(2, 9), 0); c = rDec(11, 49, 1);
-        r = dAdd(a, dMul(b, c)); expr = `${dStr(a)} ＋ ${dStr(b)} × ${dStr(c)}`; break;
+        i1 = dMul(b, c); r = dAdd(a, i1); expr = `${dStr(a)} ＋ ${dStr(b)} × ${dStr(c)}`;
+        hint = `先に × を計算：${dStr(b)} × ${dStr(c)} ＝ ${dStr(i1)}<br>${dStr(a)} ＋ ${dStr(i1)} ＝ ${dStr(r)}`; break;
       case '(a-b)c': a = rDec(31, 99, 1); b = rDec(11, 29, 1); c = dec(rand(2, 9), 0);
-        r = dMul(dSub(a, b), c); expr = `(${dStr(a)} － ${dStr(b)}) × ${dStr(c)}`; break;
+        i1 = dSub(a, b); r = dMul(i1, c); expr = `(${dStr(a)} － ${dStr(b)}) × ${dStr(c)}`;
+        hint = `先にかっこの中：${dStr(a)} － ${dStr(b)} ＝ ${dStr(i1)}<br>${dStr(i1)} × ${dStr(c)} ＝ ${dStr(r)}`; break;
       case 'ab-c': a = rDec(11, 49, 1); b = dec(rand(2, 9), 0); c = rDec(11, 99, 1);
-        r = dSub(dMul(a, b), c); expr = `${dStr(a)} × ${dStr(b)} － ${dStr(c)}`; break;
+        i1 = dMul(a, b); r = dSub(i1, c); expr = `${dStr(a)} × ${dStr(b)} － ${dStr(c)}`;
+        hint = `先に × を計算：${dStr(a)} × ${dStr(b)} ＝ ${dStr(i1)}<br>${dStr(i1)} － ${dStr(c)} ＝ ${dStr(r)}`; break;
       case 'a(b+c)': a = rDec(11, 39, 1); b = rDec(11, 49, 1); c = rDec(11, 49, 1);
-        r = dMul(a, dAdd(b, c)); expr = `${dStr(a)} × (${dStr(b)} ＋ ${dStr(c)})`; break;
+        i1 = dAdd(b, c); r = dMul(a, i1); expr = `${dStr(a)} × (${dStr(b)} ＋ ${dStr(c)})`;
+        hint = `先にかっこの中：${dStr(b)} ＋ ${dStr(c)} ＝ ${dStr(i1)}<br>${dStr(a)} × ${dStr(i1)} ＝ ${dStr(r)}`; break;
       case 'a-(b-c)d': a = rDec(11, 99, 1); b = rDec(31, 99, 1); c = rDec(11, 29, 1); d = qt;
-        r = dSub(a, dMul(dSub(b, c), d)); expr = `${dStr(a)} － (${dStr(b)} － ${dStr(c)}) × ${dStr(d)}`; break;
+        i1 = dSub(b, c); i2 = dMul(i1, d); r = dSub(a, i2); expr = `${dStr(a)} － (${dStr(b)} － ${dStr(c)}) × ${dStr(d)}`;
+        hint = `かっこの中：${dStr(b)} － ${dStr(c)} ＝ ${dStr(i1)}<br>次に ×：${dStr(i1)} × ${dStr(d)} ＝ ${dStr(i2)}<br>${dStr(a)} － ${dStr(i2)} ＝ ${dStr(r)}`; break;
       default: a = rDec(11, 49, 1); b = rDec(11, 49, 1); c = qt; d = rDec(11, 99, 1);
-        r = dSub(dMul(dAdd(a, b), c), d); expr = `(${dStr(a)} ＋ ${dStr(b)}) × ${dStr(c)} － ${dStr(d)}`;
+        i1 = dAdd(a, b); i2 = dMul(i1, c); r = dSub(i2, d); expr = `(${dStr(a)} ＋ ${dStr(b)}) × ${dStr(c)} － ${dStr(d)}`;
+        hint = `かっこの中：${dStr(a)} ＋ ${dStr(b)} ＝ ${dStr(i1)}<br>次に ×：${dStr(i1)} × ${dStr(c)} ＝ ${dStr(i2)}<br>${dStr(i2)} － ${dStr(d)} ＝ ${dStr(r)}`;
     }
     if (r.n <= 0 || dStr(r).replace(/^[^.]*\.?/, '').length > 2 || dStr(dSub(r, dec(1, 1))).startsWith('-')) return null;
-    return { expr, answer: dStr(r) };
+    return { expr, answer: dStr(r), hint };
   });
 }
 // 帯分数のたし算・ひき算（例: 3 2/5＋1 1/5－2 4/5）
@@ -689,18 +760,24 @@ function makeKMixedFrac(grade, level) {
     const term = (wMin, wMax) => { const w = rand(wMin, wMax); let n; do { n = rand(1, d - 1); } while (gcd(n, d) !== 1); return { w, n, v: w * d + n }; };
     const html = x => `${x.w}${fracHtml(x.n, d)}`;
     if (level === 1) {
-      const a = term(1, 4), b = term(1, 3);
-      return { expr: `${html(a)} ＋ ${html(b)}`, answer: fracSimplify(a.v + b.v, d) };
+      const a = term(1, 4), b = term(1, 3), ans = fracSimplify(a.v + b.v, d);
+      const carry = a.n + b.n >= d ? '（分子が分母をこえたら、1 くり上げる）' : '';
+      const hint = `整数どうし ${a.w} ＋ ${b.w} ＝ ${a.w + b.w}、分数どうし ${fracHtml(a.n, d)} ＋ ${fracHtml(b.n, d)} ＝ ${fracHtml(a.n + b.n, d)}<br>→ ${ans} ${carry}`;
+      return { expr: `${html(a)} ＋ ${html(b)}`, answer: ans, hint };
     }
     if (level === 2) {
       const a = term(2, 5), b = term(1, 3);
       if (a.n >= b.n || a.v <= b.v) return null; // くり下がりのある問題だけ
-      return { expr: `${html(a)} － ${html(b)}`, answer: fracSimplify(a.v - b.v, d) };
+      const ans = fracSimplify(a.v - b.v, d);
+      const hint = `分数は ${fracHtml(a.n, d)} から ${fracHtml(b.n, d)} がひけないので、整数から 1 くずして ${a.w - 1}${fracHtml(a.n + d, d)} にする<br>整数 ${a.w - 1} － ${b.w}、分数 ${fracHtml(a.n + d, d)} － ${fracHtml(b.n, d)} → ${ans}`;
+      return { expr: `${html(a)} － ${html(b)}`, answer: ans, hint };
     }
     const a = term(2, 5), b = term(1, 3), c = term(1, 4);
     const r = a.v + b.v - c.v;
     if (r <= 0 || b.v === c.v || (a.n + b.n) % d >= c.n) return null; // 最後のひき算でくり下がりが起きる問題だけ
-    return { expr: `${html(a)} ＋ ${html(b)} － ${html(c)}`, answer: fracSimplify(r, d) };
+    const ans = fracSimplify(r, d);
+    const hint = `左から順に。先に ${html(a)} ＋ ${html(b)} を計算し、そのあと ${html(c)} をひく<br>ひけないときは整数から 1 くずす → ${ans}`;
+    return { expr: `${html(a)} ＋ ${html(b)} － ${html(c)}`, answer: ans, hint };
   });
 }
 // わり算の□をもとめる（例: 8.1÷□＝3.5あまり0.05）
@@ -708,34 +785,42 @@ function makeKReverse(grade, level) {
   const note = '□にあてはまる数をもとめる';
   if (level === 1) {
     const b = rand(3, 9), c = rand(2, 12), r = rand(1, b - 1);
-    return { expr: `□ ÷ ${b} ＝ ${c} あまり ${r}`, answer: String(b * c + r), note, noEq: true };
+    return { expr: `□ ÷ ${b} ＝ ${c} あまり ${r}`, answer: String(b * c + r), note, noEq: true,
+      hint: `わられる数 ＝ わる数 × 商 ＋ あまり<br>□ ＝ ${b} × ${c} ＋ ${r} ＝ ${b * c + r}` };
   }
   if (level === 2) {
     const x = rand(3, 12), c = rand(2, 9), r = rand(1, x - 1);
-    return { expr: `${x * c + r} ÷ □ ＝ ${c} あまり ${r}`, answer: String(x), note, noEq: true };
+    const A = x * c + r;
+    return { expr: `${A} ÷ □ ＝ ${c} あまり ${r}`, answer: String(x), note, noEq: true,
+      hint: `わる数 ＝ (わられる数 － あまり) ÷ 商<br>□ ＝ (${A} － ${r}) ÷ ${c} ＝ ${x}` };
   }
   const Xt = randRaw(11, 49, 1), Qt = randRaw(11, 99, 1), R = rand(1, Xt - 1);
   const A = Xt * Qt + R;
-  return { expr: `${decStr(A, 2)} ÷ □ ＝ ${decStr(Qt, 1)} あまり ${decStr(R, 2)}`, answer: decStr(Xt, 1), note, noEq: true };
+  return { expr: `${decStr(A, 2)} ÷ □ ＝ ${decStr(Qt, 1)} あまり ${decStr(R, 2)}`, answer: decStr(Xt, 1), note, noEq: true,
+    hint: `わる数 ＝ (わられる数 － あまり) ÷ 商<br>□ ＝ (${decStr(A, 2)} － ${decStr(R, 2)}) ÷ ${decStr(Qt, 1)} ＝ ${decStr(Xt, 1)}` };
 }
 // くふうする計算（例: 3.14×25－8×2×3.14－9×3.14）
 function makeKKufu(grade, level) {
   return retry(() => {
-    let expr, S;
+    let expr, S, hint;
     if (level === 1) {
       S = pick([10, 20, 30]); const a = rand(1, S - 1);
       expr = `3.14 × ${a} ＋ 3.14 × ${S - a}`;
+      hint = `3.14 でまとめる：3.14 ×(${a} ＋ ${S - a}) ＝ 3.14 × ${S}`;
     } else if (level === 2) {
       const a = rand(12, 49); S = pick([10, 20]); const b = a - S;
       if (b <= 0) return null;
       expr = Math.random() < 0.5 ? `3.14 × ${a} － 3.14 × ${b}` : `${a} × 3.14 － ${b} × 3.14`;
+      hint = `3.14 でまとめる：3.14 ×(${a} － ${b}) ＝ 3.14 × ${S}`;
     } else {
       const a = rand(20, 40), b = rand(2, 9), c = 2, d = rand(1, 12);
       S = a - b * c - d;
       if (S < 0 || S > 30) return null;
       expr = `3.14 × ${a} － ${b} × ${c} × 3.14 － ${d} × 3.14`;
+      hint = `どれも 3.14 のかけ算。3.14 ×(${a} － ${b}×${c} － ${d}) ＝ 3.14 × ${S}`;
     }
-    return { expr, answer: dStr(dMul(dec(314, 2), dec(S, 0))), note: 'くふうして計算する' };
+    const ans = dStr(dMul(dec(314, 2), dec(S, 0)));
+    return { expr, answer: ans, note: 'くふうして計算する', hint: `${hint} ＝ ${ans}` };
   });
 }
 // 単位のかんさん（例: 1.2L＝□dL、0.5km－320m＝□m）
@@ -762,7 +847,14 @@ function makeKUnit(grade, level) {
       default: { const a = randRaw(11, 49, 1), b = rand(1, 9); v = a - b;
         if (v <= 0) return null; expr = `${decStr(a, 1)}L － ${b}dL ＝ □dL`; ans = String(v); }
     }
-    return { expr, answer: ans, noEq: true };
+    const UNIT_HINTS = {
+      'L-dL': '1L ＝ 10dL なので ×10', 'dL-L': '10dL ＝ 1L なので ÷10',
+      'cm-m': '100cm ＝ 1m なので ÷100', 'm-cm': '1m ＝ 100cm なので ×100',
+      'g-kg': '1000g ＝ 1kg なので ÷1000', 'kg-g': '1kg ＝ 1000g なので ×1000',
+      'km-m': '1km ＝ 1000m なので ×1000', 'm-km': '1000m ＝ 1km なので ÷1000',
+      'dL-mL': '1dL ＝ 100mL なので ×100',
+    };
+    return { expr, answer: ans, noEq: true, hint: UNIT_HINTS[t] || '左右のたんいを同じにそろえてから ひき算する' };
   });
 }
 // 過去問セット: 2026年度・新5年の大問1と同じならび（9問）
@@ -802,6 +894,7 @@ let state = {
   showTime: true,
   showWorkspace: true,
   showStamp: true,
+  showExplain: true,
   answerMode: 'with',
   sets: 3,
   kaichiSet: false,
@@ -865,6 +958,7 @@ function toggleNameDate() { state.showNameDate = !state.showNameDate; renderAll(
 function toggleTime() { state.showTime = !state.showTime; renderAll(); saveSettings(); }
 function toggleWorkspace() { state.showWorkspace = !state.showWorkspace; renderAll(); saveSettings(); }
 function toggleStamp() { state.showStamp = !state.showStamp; renderAll(); saveSettings(); }
+function toggleExplain() { state.showExplain = !state.showExplain; renderAll(); saveSettings(); }
 function setAnswerMode(mode) { state.answerMode = mode; renderAll(); saveSettings(); }
 function changeSets(delta) { state.sets = Math.min(5, Math.max(1, state.sets + delta)); renderAll(); saveSettings(); }
 
@@ -927,6 +1021,8 @@ function renderAll() {
   setSwitch('time-switch', state.showTime);
   setSwitch('workspace-switch', state.showWorkspace);
   setSwitch('stamp-switch', state.showStamp);
+  setSwitch('explain-switch', state.showExplain);
+  document.getElementById('explain-row').classList.toggle('disabled', state.answerMode === 'none');
 
   document.querySelectorAll('.count-btn').forEach(b => {
     b.classList.toggle('selected', Number(b.dataset.count) === state.count);
@@ -1072,10 +1168,17 @@ function buildHyakuSheetHtml(setIndex, grid, pageNo, totalPages) {
   </div>`;
 }
 function buildListAnswerHtml(setIndex, problems) {
+  const showHint = state.showExplain;
+  const cols = showHint ? 1 : 2; // 解説ありは読みやすさ優先で1列
   return `<div class="sheet">
     <div class="sheet-head"><div class="sheet-title">こたえ（${setIndex}日目）</div></div>
-    <div class="sheet-answers cols-2">
-      ${problems.map((p, i) => `<div class="answer-item">${circleTag(i + 1)}<span>${p.answer}</span></div>`).join('')}
+    <div class="sheet-answers cols-${cols}">
+      ${problems.map((p, i) => {
+        if (showHint && p.hint) {
+          return `<div class="answer-item answer-block"><div class="answer-line">${circleTag(i + 1)}<span>${p.answer}</span></div><div class="answer-hint">${p.hint}</div></div>`;
+        }
+        return `<div class="answer-item">${circleTag(i + 1)}<span>${p.answer}</span></div>`;
+      }).join('')}
     </div>
   </div>`;
 }
@@ -1138,7 +1241,7 @@ function saveSettings() {
     grade: state.grade, units: Array.from(state.units), reviewMix: state.reviewMix,
     format: state.format, hyakuUnit: state.hyakuUnit, level: state.level, count: state.count, columns: state.columns,
     showNameDate: state.showNameDate, showTime: state.showTime, showWorkspace: state.showWorkspace, showStamp: state.showStamp,
-    answerMode: state.answerMode, sets: state.sets, kaichiSet: state.kaichiSet,
+    showExplain: state.showExplain, answerMode: state.answerMode, sets: state.sets, kaichiSet: state.kaichiSet,
   };
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(toSave)); } catch (e) {}
 }
@@ -1160,6 +1263,7 @@ function loadSettings() {
     state.showTime = saved.showTime !== false;
     state.showWorkspace = saved.showWorkspace !== false;
     state.showStamp = saved.showStamp !== false;
+    state.showExplain = saved.showExplain !== false;
     state.answerMode = saved.answerMode === 'none' ? 'none' : 'with';
     state.sets = Math.min(5, Math.max(1, saved.sets || 3));
   } catch (e) {}
