@@ -505,7 +505,9 @@ const UNIT_DEFS = [
   { key: 'k_mixed_frac', label: '帯分数のたし算・ひき算', grades: ['K'], gridable: false },
   { key: 'k_reverse', label: 'わり算の□をもとめる', grades: ['K'], gridable: false },
   { key: 'k_kufu', label: 'くふうする計算（3.14）', grades: ['K'], gridable: false },
-  { key: 'k_unit', label: '単位のかんさん', grades: ['K'], gridable: false },
+  { key: 'k_unit', label: '単位のかんさん（長さ・重さ・かさ）', grades: ['K'], gridable: false },
+  { key: 'k_unit_area', label: '面積のたんい（a・ha・㎡）', grades: ['K'], gridable: false },
+  { key: 'k_unit_time', label: '時間のたんい（秒・分・時間）', grades: ['K'], gridable: false },
 ];
 function gradeLabel() { return state.grade === 'K' ? '開智対策（新5年）' : `${state.grade}年生`; }
 function isKaichiSet() { return state.grade === 'K' && state.format === 'list' && state.kaichiSet; }
@@ -848,13 +850,13 @@ function makeKKufu(grade, level) {
     return { expr, answer: ans, note: 'くふうして計算する', hint: `${hint} ＝ ${ans}` };
   });
 }
-// 単位のかんさん（例: 1.2L＝□dL、0.5km－320m＝□m）
+// 単位のかんさん・長さ／重さ／かさ（例: 1.2L＝□dL、0.5km－320m＝□m）
 function makeKUnit(grade, level) {
   return retry(() => {
-    const t = level === 1 ? pick(['L-dL', 'dL-L', 'cm-m', 'm-cm'])
-      : level === 2 ? pick(['g-kg', 'kg-g', 'km-m', 'm-km', 'L-dL', 'cm-m'])
-      : pick(['km-m-diff', 'kg-g-diff', 'L-dL-diff', 'g-kg', 'm-km', 'dL-mL']);
-    let v, expr, ans;
+    const t = level === 1 ? pick(['L-dL', 'dL-L', 'cm-m', 'm-cm', 'mm-cm', 'cm-mm', 'mL-dL'])
+      : level === 2 ? pick(['g-kg', 'kg-g', 'km-m', 'm-km', 'L-dL', 'cm-m', 'dL-mL', 'mL-dL', 'kg-t', 't-kg', 'm-mm'])
+      : pick(['km-m-diff', 'kg-g-diff', 'L-dL-diff', 'm-cm-diff', 't-kg-diff', 'g-kg', 'm-km', 'dL-mL', 'mm-m', 'mL-L', 'L-mL', 'kg-t']);
+    let v, expr, ans, hint = '';
     switch (t) {
       case 'L-dL': v = randRaw(11, 99, 1); expr = `${decStr(v, 1)}L ＝ □dL`; ans = String(v); break;
       case 'dL-L': v = randRaw(3, 45, 1); expr = `${v}dL ＝ □L`; ans = decStr(v, 1); break;
@@ -865,21 +867,134 @@ function makeKUnit(grade, level) {
       case 'km-m': v = randRaw(11, 999, 2); expr = `${decStr(v, 2)}km ＝ □m`; ans = String(v * 10); break;
       case 'm-km': v = rand(30, 9800); expr = `${v}m ＝ □km`; ans = decStr(v, 3); break;
       case 'dL-mL': v = randRaw(11, 99, 1); expr = `${decStr(v, 1)}dL ＝ □mL`; ans = String(v * 10); break;
+      case 'mm-cm': v = rand(2, 99) * 10; expr = `${v}mm ＝ □cm`; ans = String(v / 10); break;
+      case 'cm-mm': v = rand(2, 99); expr = `${v}cm ＝ □mm`; ans = String(v * 10); break;
+      case 'mm-m': v = rand(150, 9900); expr = `${v}mm ＝ □m`; ans = decStr(v, 3); break;
+      case 'm-mm': v = randRaw(11, 999, 2); expr = `${decStr(v, 2)}m ＝ □mm`; ans = String(v * 10); break;
+      case 'mL-dL': v = rand(2, 99) * 100; expr = `${v}mL ＝ □dL`; ans = String(v / 100); break;
+      case 'mL-L': v = rand(150, 9900); expr = `${v}mL ＝ □L`; ans = decStr(v, 3); break;
+      case 'L-mL': v = randRaw(11, 999, 2); expr = `${decStr(v, 2)}L ＝ □mL`; ans = String(v * 10); break;
+      case 'kg-t': v = rand(150, 9900); expr = `${v}kg ＝ □t`; ans = decStr(v, 3); break;
+      case 't-kg': v = randRaw(11, 99, 1); expr = `${decStr(v, 1)}t ＝ □kg`; ans = String(v * 100); break;
       case 'km-m-diff': { const a = randRaw(3, 49, 1), b = rand(10, 90) * 10; v = a * 100 - b;
-        if (v <= 0) return null; expr = `${decStr(a, 1)}km － ${b}m ＝ □m`; ans = String(v); break; }
+        if (v <= 0) return null; expr = `${decStr(a, 1)}km － ${b}m ＝ □m`; ans = String(v);
+        hint = `${decStr(a, 1)}km ＝ ${a * 100}m になおしてから ひく：${a * 100} － ${b} ＝ ${v}`; break; }
       case 'kg-g-diff': { const a = randRaw(11, 49, 1), b = rand(10, 90) * 10; v = a * 100 - b;
-        if (v <= 0) return null; expr = `${decStr(a, 1)}kg － ${b}g ＝ □g`; ans = String(v); break; }
+        if (v <= 0) return null; expr = `${decStr(a, 1)}kg － ${b}g ＝ □g`; ans = String(v);
+        hint = `${decStr(a, 1)}kg ＝ ${a * 100}g になおしてから ひく：${a * 100} － ${b} ＝ ${v}`; break; }
+      case 'm-cm-diff': { const a = randRaw(11, 49, 1), b = rand(10, 30) * 10; v = a * 10 - b;
+        if (v <= 0) return null; expr = `${decStr(a, 1)}m － ${b}cm ＝ □cm`; ans = String(v);
+        hint = `${decStr(a, 1)}m ＝ ${a * 10}cm になおしてから ひく：${a * 10} － ${b} ＝ ${v}`; break; }
+      case 't-kg-diff': { const a = randRaw(11, 49, 1), b = rand(10, 90) * 10; v = a * 100 - b;
+        if (v <= 0) return null; expr = `${decStr(a, 1)}t － ${b}kg ＝ □kg`; ans = String(v);
+        hint = `${decStr(a, 1)}t ＝ ${a * 100}kg になおしてから ひく：${a * 100} － ${b} ＝ ${v}`; break; }
       default: { const a = randRaw(11, 49, 1), b = rand(1, 9); v = a - b;
-        if (v <= 0) return null; expr = `${decStr(a, 1)}L － ${b}dL ＝ □dL`; ans = String(v); }
+        if (v <= 0) return null; expr = `${decStr(a, 1)}L － ${b}dL ＝ □dL`; ans = String(v);
+        hint = `${decStr(a, 1)}L ＝ ${a}dL になおしてから ひく：${a} － ${b} ＝ ${v}`; }
     }
     const UNIT_HINTS = {
       'L-dL': '1L ＝ 10dL なので ×10', 'dL-L': '10dL ＝ 1L なので ÷10',
       'cm-m': '100cm ＝ 1m なので ÷100', 'm-cm': '1m ＝ 100cm なので ×100',
       'g-kg': '1000g ＝ 1kg なので ÷1000', 'kg-g': '1kg ＝ 1000g なので ×1000',
       'km-m': '1km ＝ 1000m なので ×1000', 'm-km': '1000m ＝ 1km なので ÷1000',
-      'dL-mL': '1dL ＝ 100mL なので ×100',
+      'dL-mL': '1dL ＝ 100mL なので ×100', 'mL-dL': '100mL ＝ 1dL なので ÷100',
+      'mm-cm': '10mm ＝ 1cm なので ÷10', 'cm-mm': '1cm ＝ 10mm なので ×10',
+      'mm-m': '1000mm ＝ 1m なので ÷1000', 'm-mm': '1m ＝ 1000mm なので ×1000',
+      'mL-L': '1000mL ＝ 1L なので ÷1000', 'L-mL': '1L ＝ 1000mL なので ×1000',
+      'kg-t': '1000kg ＝ 1t なので ÷1000', 't-kg': '1t ＝ 1000kg なので ×1000',
     };
-    return { expr, answer: ans, noEq: true, hint: UNIT_HINTS[t] || '左右のたんいを同じにそろえてから ひき算する' };
+    return { expr, answer: ans, noEq: true, hint: hint || UNIT_HINTS[t] };
+  });
+}
+// 面積のたんい（例: 3ha＝□a、25000㎡＝□ha）
+function makeKUnitArea(grade, level) {
+  return retry(() => {
+    const t = level === 1 ? pick(['a-m2', 'm2-a', 'ha-a', 'a-ha'])
+      : level === 2 ? pick(['ha-m2', 'm2-ha', 'km2-ha', 'ha-km2', 'm2-cm2', 'cm2-m2', 'a-m2', 'ha-a'])
+      : pick(['km2-m2', 'm2-km2', 'ha-a-dec', 'km2-ha-dec', 'ha-m2-dec', 'ha-a-diff', 'a-m2-diff', 'km2-ha-diff']);
+    let v, expr, ans, hint = '';
+    switch (t) {
+      case 'a-m2': v = rand(2, 99); expr = `${v}a ＝ □㎡`; ans = String(v * 100); break;
+      case 'm2-a': v = rand(2, 99); expr = `${v * 100}㎡ ＝ □a`; ans = String(v); break;
+      case 'ha-a': v = rand(2, 60); expr = `${v}ha ＝ □a`; ans = String(v * 100); break;
+      case 'a-ha': v = rand(2, 60); expr = `${v * 100}a ＝ □ha`; ans = String(v); break;
+      case 'ha-m2': v = rand(2, 40); expr = `${v}ha ＝ □㎡`; ans = String(v * 10000); break;
+      case 'm2-ha': v = rand(2, 40); expr = `${v * 10000}㎡ ＝ □ha`; ans = String(v); break;
+      case 'km2-ha': v = rand(2, 30); expr = `${v}k㎡ ＝ □ha`; ans = String(v * 100); break;
+      case 'ha-km2': v = rand(2, 30); expr = `${v * 100}ha ＝ □k㎡`; ans = String(v); break;
+      case 'm2-cm2': v = rand(2, 20); expr = `${v}㎡ ＝ □c㎡`; ans = String(v * 10000); break;
+      case 'cm2-m2': v = rand(2, 20); expr = `${v * 10000}c㎡ ＝ □㎡`; ans = String(v); break;
+      case 'km2-m2': v = rand(2, 9); expr = `${v}k㎡ ＝ □㎡`; ans = String(v * 1000000); break;
+      case 'm2-km2': v = rand(2, 9); expr = `${v * 1000000}㎡ ＝ □k㎡`; ans = String(v); break;
+      case 'ha-a-dec': v = randRaw(11, 99, 1); expr = `${decStr(v, 1)}ha ＝ □a`; ans = String(v * 10); break;
+      case 'km2-ha-dec': v = randRaw(11, 99, 1); expr = `${decStr(v, 1)}k㎡ ＝ □ha`; ans = String(v * 10); break;
+      case 'ha-m2-dec': v = randRaw(11, 99, 1); expr = `${decStr(v, 1)}ha ＝ □㎡`; ans = String(v * 1000); break;
+      case 'ha-a-diff': { const a = rand(3, 30), b = rand(2, 20) * 10; v = a * 100 - b;
+        if (v <= 0) return null; expr = `${a}ha － ${b}a ＝ □a`; ans = String(v);
+        hint = `1ha ＝ 100a だから ${a}ha ＝ ${a * 100}a。${a * 100} － ${b} ＝ ${v}`; break; }
+      case 'a-m2-diff': { const a = rand(3, 40), b = rand(2, 19) * 10; v = a * 100 - b;
+        if (v <= 0) return null; expr = `${a}a － ${b}㎡ ＝ □㎡`; ans = String(v);
+        hint = `1a ＝ 100㎡ だから ${a}a ＝ ${a * 100}㎡。${a * 100} － ${b} ＝ ${v}`; break; }
+      default: { const a = rand(3, 25), b = rand(2, 20) * 10; v = a * 100 - b;
+        if (v <= 0) return null; expr = `${a}k㎡ － ${b}ha ＝ □ha`; ans = String(v);
+        hint = `1k㎡ ＝ 100ha だから ${a}k㎡ ＝ ${a * 100}ha。${a * 100} － ${b} ＝ ${v}`; }
+    }
+    const AREA_HINTS = {
+      'a-m2': '1a ＝ 100㎡ なので ×100', 'm2-a': '100㎡ ＝ 1a なので ÷100',
+      'ha-a': '1ha ＝ 100a なので ×100', 'a-ha': '100a ＝ 1ha なので ÷100',
+      'ha-m2': '1ha ＝ 100a ＝ 10000㎡ なので ×10000', 'm2-ha': '10000㎡ ＝ 1ha なので ÷10000',
+      'km2-ha': '1k㎡ ＝ 100ha なので ×100', 'ha-km2': '100ha ＝ 1k㎡ なので ÷100',
+      'm2-cm2': '1m ＝ 100cm だから 1㎡ ＝ 100×100 ＝ 10000c㎡ なので ×10000',
+      'cm2-m2': '10000c㎡ ＝ 1㎡ なので ÷10000',
+      'km2-m2': '1km ＝ 1000m だから 1k㎡ ＝ 1000×1000 ＝ 1000000㎡ なので ×1000000',
+      'm2-km2': '1000000㎡ ＝ 1k㎡ なので ÷1000000',
+      'ha-a-dec': '1ha ＝ 100a なので ×100', 'km2-ha-dec': '1k㎡ ＝ 100ha なので ×100',
+      'ha-m2-dec': '1ha ＝ 10000㎡ なので ×10000',
+    };
+    return { expr, answer: ans, noEq: true, hint: hint || AREA_HINTS[t] };
+  });
+}
+// 時間のたんい（例: 180秒＝□分、150秒＝□分□秒）
+function makeKUnitTime(grade, level) {
+  return retry(() => {
+    const t = level === 1 ? pick(['s-min', 'min-s', 'min-h', 'h-min'])
+      : level === 2 ? pick(['s-minsec', 'min-hmin', 'h-day', 'day-h', 'min-s', 'h-min'])
+      : pick(['minsec-s', 'hmin-min', 's-minsec', 'min-hmin', 'day-min', 'h-min-diff', 'day-h-diff']);
+    let expr, ans, hint = '';
+    switch (t) {
+      case 's-min': { const m = rand(2, 20); expr = `${m * 60}秒 ＝ □分`; ans = String(m); break; }
+      case 'min-s': { const m = rand(2, 15); expr = `${m}分 ＝ □秒`; ans = String(m * 60); break; }
+      case 'min-h': { const h = rand(2, 12); expr = `${h * 60}分 ＝ □時間`; ans = String(h); break; }
+      case 'h-min': { const h = rand(2, 12); expr = `${h}時間 ＝ □分`; ans = String(h * 60); break; }
+      case 'h-day': { const d = rand(2, 9); expr = `${d * 24}時間 ＝ □日`; ans = String(d); break; }
+      case 'day-h': { const d = rand(2, 9); expr = `${d}日 ＝ □時間`; ans = String(d * 24); break; }
+      case 'day-min': { const d = rand(1, 4); expr = `${d}日 ＝ □分`; ans = String(d * 24 * 60);
+        hint = `1日 ＝ 24時間、1時間 ＝ 60分 なので ${d} × 24 × 60 ＝ ${d * 24 * 60}`; break; }
+      case 's-minsec': { const m = rand(1, 9), s = rand(1, 59); const tot = m * 60 + s;
+        expr = `${tot}秒 ＝ □分□秒`; ans = `${m}分${s}秒`;
+        hint = `60秒 ＝ 1分 なので 60でわる：${tot} ÷ 60 ＝ ${m} あまり ${s} → 商が分、あまりが秒`; break; }
+      case 'minsec-s': { const m = rand(1, 9), s = rand(1, 59); const tot = m * 60 + s;
+        expr = `${m}分${s}秒 ＝ □秒`; ans = String(tot);
+        hint = `分を秒になおしてたす：${m} × 60 ＝ ${m * 60}、${m * 60} ＋ ${s} ＝ ${tot}`; break; }
+      case 'min-hmin': { const h = rand(1, 5), m = rand(1, 59); const tot = h * 60 + m;
+        expr = `${tot}分 ＝ □時間□分`; ans = `${h}時間${m}分`;
+        hint = `60分 ＝ 1時間 なので 60でわる：${tot} ÷ 60 ＝ ${h} あまり ${m} → 商が時間、あまりが分`; break; }
+      case 'hmin-min': { const h = rand(1, 5), m = rand(1, 59); const tot = h * 60 + m;
+        expr = `${h}時間${m}分 ＝ □分`; ans = String(tot);
+        hint = `時間を分になおしてたす：${h} × 60 ＝ ${h * 60}、${h * 60} ＋ ${m} ＝ ${tot}`; break; }
+      case 'h-min-diff': { const h = rand(1, 4), m = rand(5, 55); expr = `${h}時間 － ${m}分 ＝ □分`;
+        ans = String(h * 60 - m);
+        hint = `${h}時間 ＝ ${h * 60}分 になおしてから ひく：${h * 60} － ${m} ＝ ${h * 60 - m}`; break; }
+      default: { const d = rand(1, 5), h = rand(2, 20); expr = `${d}日 － ${h}時間 ＝ □時間`;
+        ans = String(d * 24 - h);
+        hint = `${d}日 ＝ ${d * 24}時間 になおしてから ひく：${d * 24} － ${h} ＝ ${d * 24 - h}`; }
+    }
+    const TIME_HINTS = {
+      's-min': '60秒 ＝ 1分 なので ÷60', 'min-s': '1分 ＝ 60秒 なので ×60',
+      'min-h': '60分 ＝ 1時間 なので ÷60', 'h-min': '1時間 ＝ 60分 なので ×60',
+      'h-day': '24時間 ＝ 1日 なので ÷24', 'day-h': '1日 ＝ 24時間 なので ×24',
+    };
+    return { expr, answer: ans, noEq: true, hint: hint || TIME_HINTS[t] };
   });
 }
 // 過去問セット: 2026年度・新5年の大問1と同じならび（9問）
@@ -903,6 +1018,7 @@ const GENERATORS = {
   k_dec_addsub: makeKDecAddSub, k_dec_mul: makeKDecMul, k_dec_div_rem: makeKDecDivRem,
   k_div_round: makeKDivRound, k_dec_div_int: makeKDecDivInt, k_order: makeKOrder,
   k_mixed_frac: makeKMixedFrac, k_reverse: makeKReverse, k_kufu: makeKKufu, k_unit: makeKUnit,
+  k_unit_area: makeKUnitArea, k_unit_time: makeKUnitTime,
 };
 
 // ==================== 状態 ====================
